@@ -5,7 +5,7 @@ scrapper <- function(url) {
                  data.table)
   
   # We test the scrapability of the web
-  paths_allowed(url)
+  # paths_allowed(url)
   # As it returns TRUE we can go ahead
   
   web <- read_html(url)
@@ -71,7 +71,7 @@ scrapper <- function(url) {
   rnames <- NULL
   i = 1
   j = 1
-  while (i <= 29) {
+  while (i <= length(apuesta)) {
     if (apuesta[i] == '2') {
       aux <- paste(names[j], apuesta[i], sep = '__')
       rnames <- c(rnames, aux)
@@ -87,7 +87,8 @@ scrapper <- function(url) {
   rm(i, j, aux)
   ## We assign this combination as rownames
   rownames(dtfinal) <- rnames
-  dtfinal <- as.data.table(dtfinal)
   return(dtfinal)
   
 }
+
+data <- scrapper('http://www.elcomparador.com')

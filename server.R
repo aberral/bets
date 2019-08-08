@@ -1,13 +1,15 @@
 # Server
 pacman::p_load(shiny, shinyWidgets, DT)
+source('scrap.R')
 
 function(input, output) {
-  
   # You can access the value of the widget with input$text, e.g.
-  output$value <- renderPrint( {input$text })
-  source('scrap.R')
-  data <- scrapper(input$text)
-  output$tbl = renderDT(
-    data, options = list(lengthChange = FALSE)
-  
+  output$value <- reactive( {
+    renderPrint( {input$text })
+  })
+  output$tbl <- renderTable({
+    data <- scrapper(as.character(input$text))
+    browser()
+    return(data)}
+  )
 }
