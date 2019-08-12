@@ -99,5 +99,3 @@ scrapper <- function(url) {
   return(dtfinal)
   
 }
-
-data <- scrapper('http://www.elcomparador.com')
