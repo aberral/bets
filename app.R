@@ -25,16 +25,28 @@ ui <- fluidPage(
       pickerInput(
         inputId = "casapuesta", 
         label = "Select/deselect betting houses (at least 2)",
-        selected = 1:12,
-        choices = 1:12, 
+        selected = c("bwin", "marcaapuestas", "betfair"),
+        choices = c("bwin", "marcaapuestas", "betfair"), 
         options = list(
           `actions-box` = TRUE, 
           size = 10,
           `selected-text-format` = "count > 12"
         ), 
         multiple = TRUE
-      )
       ),
+    pickerInput(
+      inputId = "columna", 
+      label = "Select/deselect reference betting house",
+      selected = "bwin",
+      choices = "bwin",
+      options = list(
+        `actions-box` = TRUE, 
+        size = 10,
+        `selected-text-format` = "count > 12"
+      ), 
+      multiple = F
+    )
+  ),
   mainPanel(
     textInput("url", 
               label = "Enter an Url:",
@@ -50,7 +62,7 @@ div(class = "footer", includeHTML("footer.html"))
 )
 
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   # You can access the value of the widget with input$text, e.g.
   # Data Matrix
   reactive_df <- reactive({
@@ -62,9 +74,19 @@ server <- function(input, output) {
         return(scrapper(url))
       }
   })
+  #
+  observe({
+    data <- as.matrix(reactive_df())
+    updatePickerInput(session, 'casapuesta', choices = unique(colnames(data)), selected = unique(colnames(data)))
+    updatePickerInput(session, 'columna', choices = unique(colnames(data)), selected = unique(colnames(data)))
+  })
+  #
   observeEvent(input$casapuesta,{
-    cols <- as.numeric(input$casapuesta)
-    output$tbl <- DT::renderDataTable(reactive_df()[,cols],
+    # browser()
+    cols <- input$casapuesta
+    data <- as.matrix(reactive_df())
+    index <- match(cols, colnames(data))
+    output$tbl <- DT::renderDataTable(data[,index],
                                       extensions = c("Buttons"),
                                       options = list(dom = 'lBfrtip',
                                                      buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
@@ -73,10 +95,16 @@ server <- function(input, output) {
                                                        "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
                                                        "}")))}
 )
-observeEvent(input$cuota,{
-  cols <- as.numeric(input$casapuesta)
+observe({
+  cols <- input$casapuesta
+  data <- as.matrix(reactive_df())
+  # data <- apply(data, 2, function(x) as.numeric(x))
+  index <- match(cols, colnames(data))
+  data <- data[,index]
+  # browser()
+  betref <- input$columna
+  index2 <- match(betref, colnames(data))
   cuota <- as.numeric(input$cuota)
-  data <- as.matrix(reactive_df()[,cols])
   # MAX where is it
   max <- apply(data, 1, FUN = function(x) max(x))
   max <- unname(max)
@@ -89,11 +117,13 @@ observeEvent(input$cuota,{
   
   i = 1
   earns <- NULL
+  # browser()
   # We iterate through MAX vector
   while (i <= length(casa2)) {
     if (casa2[i] == '1') {
-      val <- max[i]
-      p1 <- max[i] * cuota - 25
+      # val <- max
+      # browser()
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
       p2 <- p1 / max[i + 1]
       p3 <- p1 / max[i + 2]
       tot <- p1 - p2 - p3
@@ -102,8 +132,8 @@ observeEvent(input$cuota,{
       # browser()
     }
     if (casa2[i] == 'X') {
-      val <- max[i]
-      p1 <- max[i] * cuota - 25
+      # val <- max[i]
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
       p2 <- p1 / max[i - 1]
       p3 <- p1 / max[i + 1]
       tot <- p1 - p2 - p3
@@ -111,8 +141,8 @@ observeEvent(input$cuota,{
       i = i + 1
     }
     else {
-      val <- max[i]
-      p1 <- max[i] * cuota - 25
+      # val <- max[i]
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
       p2 <- p1 / max[i - 2]
       p3 <- p1 / max[i - 1]
       tot <- p1 - p2 - p3
@@ -120,11 +150,17 @@ observeEvent(input$cuota,{
       i = i + 1
     }
   }
+  earns <- as.numeric(earns)
   rm(i, p1, p2, p3, tot)
   #
-  output$tbl <- DT::renderDataTable(cbind(reactive_df()[,cols], max, earns), 
+  # browser()
+  # output$tbl <- DT::renderDataTable(cbind(reactive_df()[,cols], max, earns), 
+  data_final <- as.data.frame(data)
+  data_final <- cbind.data.frame(data_final, max, earns)
+  output$tbl <- DT::renderDataTable(data_final, 
                                     extensions = c("Buttons"),
-                                    options = list(dom = 'lBfrtip',
+                                    options = list(pageLength = 300,
+                                                   dom = 'lBfrtip',
                                                    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
                                                    initComplete = JS(
                                                      "function(settings, json) {",
@@ -136,5 +172,3 @@ observeEvent(input$cuota,{
 
 shinyApp(ui, server)
 #http://www.elcomparador.com
-
-
