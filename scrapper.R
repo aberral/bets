@@ -8,17 +8,17 @@ scrapper <- function(url) {
   # paths_allowed(url)
   # As it returns TRUE we can go ahead
   
-  web <- read_html(url)
+  web <- read_html("http://www.elcomparador.com")
   
   # We subset the data
   ## Odd bets
   web %>% 
     html_nodes('.impar') %>% 
-    html_text() -> precios
+    html_text() %>% str_trim() -> precios
   ## Even bets
   web %>% 
     html_nodes('.par') %>% 
-    html_text() -> precios2
+    html_text() %>% str_trim() -> precios2
   # Participants
   web %>% 
     html_nodes('.equipo') %>% 
