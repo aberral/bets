@@ -36,7 +36,7 @@ scrapper <- function(url) {
   rmv   <- grep("max|mini", c.apuestas)
   c.apuestas <- c.apuestas[-rmv]
   c.apuestas <- gsub("/images/casas/", "", c.apuestas)
-  c.apuestas <- gsub(".png", "", c.apuestas)
+  c.apuestas <- gsub(".png.*", "", c.apuestas)
   # grep("casas", c.apuestas))
   
   # We generate the matrix we are going to use
