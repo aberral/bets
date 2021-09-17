@@ -1,101 +1,178 @@
-# Thu Aug 08 21:28:20 2019 ------------------------------
-## Alberto Berral Gonzalez
-scrapper <- function(url) {
-  pacman::p_load(rvest, tidyverse, robotstxt, xml2, 
-                 data.table)
-  
-  # We test the scrapability of the web
-  # paths_allowed(url)
-  # As it returns TRUE we can go ahead
-  
-  web <- read_html("http://www.elcomparador.com")
-  
-  # We subset the data
-  ## Odd bets
-  web %>% 
-    html_nodes('.impar') %>% 
-    html_text() %>% str_trim() -> precios
-  ## Even bets
-  web %>% 
-    html_nodes('.par') %>% 
-    html_text() %>% str_trim() -> precios2
-  # Participants
-  web %>% 
-    html_nodes('.equipo') %>% 
-    html_text() -> nombres
-  # Bets
-  web %>% 
-    html_nodes('.apuesta') %>% 
-    html_text() -> apuesta
-  # Bet pages
-  web %>%
-    html_nodes(css = 'img') %>% 
-    html_attr("src") -> c.apuestas
-  
-  c.apuestas <- unique(c.apuestas[grep("casas", c.apuestas)])
-  rmv   <- grep("max|mini", c.apuestas)
-  c.apuestas <- c.apuestas[-rmv]
-  c.apuestas <- gsub("/images/casas/", "", c.apuestas)
-  c.apuestas <- gsub(".png.*", "", c.apuestas)
-  # grep("casas", c.apuestas))
-  
-  # We generate the matrix we are going to use
-  dt1 <- matrix(precios,  ncol = length(c.apuestas), byrow = T)
-  dt2 <- matrix(precios2, ncol = length(c.apuestas), byrow = T)
-  # And the matrix we are going to return
-  dtfinal <- matrix(ncol = length(c.apuestas), nrow = length(apuesta)) 
-  
-  # We bind together odd and even bets
-  i = 1
-  j = 1
-  for (x in seq(1:length(apuesta))) {
-    for (name in apuesta) {
-      if (name == "1" | name == "2") {
-        dtfinal[x,] <- dt1[i,]
-        i = i + 1
-        x = x + 1
+# Server
+pacman::p_load(shiny, shinyWidgets, DT)
+source('scrapper.R')
+
+# UI
+ui <- fluidPage(
+  # Titulo de la app. Strong lo pone en negrita
+  titlePanel(h2("GAUGE")),
+  sidebarLayout(
+    sidebarPanel(
+      img(height = 100, width = 100, 
+          src = "gauge.png", class = "pull-right"),
+      
+      br(),
+      p("Gauge is a bet-comparison app that uses scrapped data 
+        from elcomparador.com pages."),
+      br(),
+      br(),
+      br(),
+      # Cuota de la apuesta
+      textInput("cuota", 
+                label = "Enter the desired share:",
+                value = "25"),
+      # Cuantas columnas se seleccionan
+      pickerInput(
+        inputId = "casapuesta", 
+        label = "Select/deselect betting houses (at least 2)",
+        choices = "",
+        # selected = c("bwin", "marcaapuestas", "betfair"),
+        # choices = c("bwin", "marcaapuestas", "betfair"), 
+        options = list(
+          `actions-box` = TRUE, 
+          size = 10,
+          `selected-text-format` = "count > 12"
+        ), 
+        multiple = TRUE
+      ),
+    pickerInput(
+      inputId = "columna", 
+      label = "Select/deselect reference betting house",
+      choices = "",
+      # selected = "bwin",
+      # choices = "bwin",
+      options = list(
+        `actions-box` = TRUE, 
+        size = 10,
+        `selected-text-format` = "count > 12"
+      ), 
+      multiple = F
+    )
+  ),
+  mainPanel(
+    textInput("url", 
+              label = "Enter an Url:",
+              value = "http://www.elcomparador.com"),
+    column(12, 
+           p("When exporting data only what is displayed will be exported. 
+             Select the desired amount of entries to export."),
+           DT::dataTableOutput("tbl")
+    )
+  )
+),
+div(class = "footer", includeHTML("footer.html"))
+)
+
+
+server <- function(input, output, session) {
+  # You can access the value of the widget with input$text, e.g.
+  # Data Matrix
+  reactive_df <- reactive({
+      url <- input$url
+      if (url == "") {
+        return(NULL)
       }
       else {
-        dtfinal[x,] <-  dt2[j,]
-        j = j + 1
-        x = x + 1
+        return(scrapper(url))
       }
-    }
-    rm(i)
-    rm(j)
-    rm(x)
-    break
-  }
-  # We assing Rownames
-  ## We paste together the names of competitors...
-  names <- NULL
-  for (i in seq(from = 1, to = (length(nombres) - 1), by = 2)) {
-    x <- paste(nombres[i], nombres[i + 1], sep = '_')
-    names <- c(names, x)
-    rm(x)
-  }
-  ## and add to them the possible bets (1,X,2)
-  rnames <- NULL
+  })
+  #
+  observe({
+    data <- as.matrix(reactive_df())
+    updatePickerInput(session, 'casapuesta', choices = unique(colnames(data)), selected = unique(colnames(data)))
+    updatePickerInput(session, 'columna', choices = unique(colnames(data)), selected = unique(colnames(data)))
+  })
+  #
+  observeEvent(input$casapuesta,{
+    # browser()
+    cols <- input$casapuesta
+    data <- as.matrix(reactive_df())
+    index <- match(cols, colnames(data))
+    output$tbl <- DT::renderDataTable(data[,index],
+                                      extensions = c("Buttons"),
+                                      options = list(dom = 'lBfrtip',
+                                                     buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                                                     initComplete = JS(
+                                                       "function(settings, json) {",
+                                                       "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+                                                       "}")))}
+)
+  observeEvent(input$casapuesta,{
+  cols <- input$casapuesta
+  data <- reactive_df()
+  data <- gsub("-", 0, data) %>% as.data.frame()
+  # rnames <- rownames(data)
+  # data <- apply(data, 2, function(x) as.numeric(x))
+  index <- match(cols, colnames(data))
+  data <- data[,index]
+  # browser()
+  betref <- input$columna
+  index2 <- match(betref, colnames(data))
+  cuota <- as.numeric(input$cuota)
+  # MAX where is it
+  max <- apply(data, 1, FUN = function(x) max(x))
+  max <- unname(max)
+  max <- as.numeric(max)
+  # Earnings
+  casa <- rownames(data)
+  casa <- strsplit(casa, '__')
+  casa2 <- lapply(casa, FUN = function(x) tail(x, 1))
+  casa2 <- unlist(casa2)
+  
   i = 1
-  j = 1
-  while (i <= length(apuesta)) {
-    if (apuesta[i] == '2') {
-      aux <- paste(names[j], apuesta[i], sep = '__')
-      rnames <- c(rnames, aux)
-      j = j + 1
+  earns <- NULL
+  # browser()
+  # We iterate through MAX vector
+  while (i <= length(casa2)) {
+    if (casa2[i] == '1') {
+      # val <- max
+      # browser()
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
+      p2 <- p1 / max[i + 1]
+      p3 <- p1 / max[i + 2]
+      tot <- p1 - p2 - p3
+      earns <- c(earns, tot)
+      i = i + 1
+      # browser()
+    }
+    if (casa2[i] == 'X') {
+      # val <- max[i]
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
+      p2 <- p1 / max[i - 1]
+      p3 <- p1 / max[i + 1]
+      tot <- p1 - p2 - p3
+      earns <- c(earns, tot)
       i = i + 1
     }
     else {
-      aux <- paste(names[j], apuesta[i], sep = '__')
-      rnames <- c(rnames, aux)
+      # val <- max[i]
+      p1 <- as.numeric(data[i, index2]) * cuota - cuota
+      p2 <- p1 / max[i - 2]
+      p3 <- p1 / max[i - 1]
+      tot <- p1 - p2 - p3
+      earns <- c(earns, tot)
       i = i + 1
     }
   }
-  rm(i, j, aux)
-  # We assign colnames
-  colnames(dtfinal) <- c.apuestas
-  ## We assign this combination as rownames
-  rownames(dtfinal) <- rnames
-  return(dtfinal)
-  
+  earns <- as.numeric(earns)
+  rm(i, p1, p2, p3, tot)
+  #
+  # browser()
+  # output$tbl <- DT::renderDataTable(cbind(reactive_df()[,cols], max, earns), 
+  data_final <- as.data.frame(data)
+  data_final <- cbind.data.frame(data_final, max, earns)
+  output$tbl <- DT::renderDataTable(data_final, 
+                                    extensions = c("Buttons"),
+                                    options = list(pageLength = 300,
+                                                   dom = 'lBfrtip',
+                                                   buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                                                   initComplete = JS(
+                                                     "function(settings, json) {",
+                                                     "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+                                                     "}")))
+
+})
 }
+
+shinyApp(ui, server)
+#http://www.elcomparador.com
